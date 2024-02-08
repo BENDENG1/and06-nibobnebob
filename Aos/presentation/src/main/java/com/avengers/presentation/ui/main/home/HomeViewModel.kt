@@ -117,9 +117,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun updateCamera(latitude: Double, longitude: Double, zoom: Double) {
+        val radius = 2.00.pow(14.00 - uiState.value.cameraZoom) * 1000
         _uiState.update { state ->
             state.copy(
-                cameraRadius = 2.00.pow(14.00 - uiState.value.cameraZoom) * 1000,
+                cameraRadius = radius,
                 cameraLatitude = latitude,
                 cameraLongitude = longitude,
                 cameraZoom = zoom
@@ -129,7 +130,7 @@ class HomeViewModel @Inject constructor(
             uiState.value.markerList,
             latitude,
             longitude,
-            uiState.value.cameraRadius
+            radius
         )
         updateCluster()
     }

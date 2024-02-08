@@ -19,8 +19,8 @@ class ClusterManager @Inject constructor() {
         cameraLongitude: Double,
         cameraRadius: Double,
     ) {
-        val visibleMarkers = getVisibleMarkers(markers,cameraLatitude,cameraLongitude,cameraRadius)
-        val newClusters = clusterMarkers(visibleMarkers, cameraRadius)
+//        val visibleMarkers = getVisibleMarkers(markers,cameraLatitude,cameraLongitude,cameraRadius)
+        val newClusters = clusterMarkers(markers, cameraRadius)
         _clusteredMarkers.value = newClusters
     }
 
@@ -28,40 +28,41 @@ class ClusterManager @Inject constructor() {
         return clusteredMarkers.value
     }
 
-    private fun getVisibleMarkers(
-        markersList: List<UiRestaurantData>,
-        cameraLatitude: Double,
-        cameraLongitude: Double,
-        cameraRadius: Double
-    ): List<UiRestaurantData> {
-        val visibleMarkers = mutableListOf<UiRestaurantData>()
-
-        for (marker in markersList) {
-            val distance = haversineDistance(
-                cameraLatitude,
-                cameraLongitude,
-                marker.latitude,
-                marker.longitude
-            )
-
-            if (distance <= cameraRadius * 2) {
-                visibleMarkers.add(marker)
-            }
-        }
-
-        return visibleMarkers
-    }
+//    private fun getVisibleMarkers(
+//        markersList: List<UiRestaurantData>,
+//        cameraLatitude: Double,
+//        cameraLongitude: Double,
+//        cameraRadius: Double
+//    ): List<UiRestaurantData> {
+//        val visibleMarkers = mutableListOf<UiRestaurantData>()
+//
+//        for (marker in markersList) {
+//            val distance = haversineDistance(
+//                cameraLatitude,
+//                cameraLongitude,
+//                marker.latitude,
+//                marker.longitude
+//            )
+//
+//            if (distance <= cameraRadius) {
+//                visibleMarkers.add(marker)
+//            }
+//        }
+//
+//        return visibleMarkers
+//    }
 
     private fun clusterMarkers(
         markers: List<UiRestaurantData>,
         cameraRadius: Double
     ): List<Cluster> {
         val clusteredMarkers = mutableListOf<Cluster>()
+        if(cameraRadius < 150)
+            return emptyList()
 
-        val clusterWidth = cameraRadius
-        val divisions = 20
-
-        val divisionWidth = clusterWidth / divisions
+        val radius = cameraRadius * 2
+        val divisions = 10
+        val divisionWidth = radius / divisions
 
         for (marker in markers) {
             var isClustered = false
@@ -74,7 +75,7 @@ class ClusterManager @Inject constructor() {
                     marker.longitude
                 )
 
-                if (distance < clusterWidth) {
+                if (distance < divisionWidth) {
                     val xDistance = abs(cluster.centerLatitude - marker.latitude)
                     val yDistance = abs(cluster.centerLongitude - marker.longitude)
 
@@ -107,8 +108,8 @@ class ClusterManager @Inject constructor() {
                 clusteredMarkers.add(newCluster)
             }
         }
-        return clusteredMarkers.filter { it.markers.size >= 10 }
-    }
 
+        return clusteredMarkers.filter { it.markers.size >= 5 }
+    }
 
 }
