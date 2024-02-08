@@ -10,5 +10,6 @@ data class UiRestaurantData(
     val reviewCount: String = "",
     val isInWishList: Boolean = false,
     val isInMyList: Boolean = false,
-    val reviewImage: String = ""
+    val reviewImage: String = "",
+    val isClustered : Boolean = false
 )

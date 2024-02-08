@@ -22,6 +22,10 @@ import com.avengers.nibobnebob.presentation.ui.toRestaurantDetail
 import com.avengers.nibobnebob.presentation.util.Constants.NEAR_RESTAURANT
 import com.avengers.presentation.R
 import com.avengers.presentation.databinding.FragmentHomeBinding
+import com.avengers.presentation.ui.main.home.Cluster
+import com.avengers.presentation.ui.main.home.HomeEvents
+import com.avengers.presentation.ui.main.home.HomeViewModel
+import com.avengers.presentation.ui.main.home.TrackingState
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.map.CameraAnimation
 import com.naver.maps.map.CameraPosition
@@ -142,11 +146,18 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
             .apply { animate(CameraAnimation.Fly, 500) }
 
         naverMap.moveCamera(cameraUpdate)
+    }
 
+    private fun handleCluster() {
+        removeAllMarker()
         viewModel.uiState.value.markerList.forEach { data ->
             setMarker(data)
         }
+        viewModel.uiState.value.clusterList.forEach { cluster ->
+            setCluster(cluster)
+        }
     }
+
 
     private fun initMapView() {
         val mapFragment = childFragmentManager.findFragmentById(R.id.map_fragment) as MapFragment?
@@ -177,7 +188,6 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
 
         // todo 화면 이동시 리스너
         naverMap.addOnCameraChangeListener { _, _ ->
-
         }
 
         naverMap.addOnCameraIdleListener {
@@ -187,6 +197,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
                 cameraPosition.target.longitude,
                 cameraPosition.zoom
             )
+            handleCluster()
         }
 
         naverMap.addOnLocationChangeListener {
@@ -216,11 +227,11 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
     }
 
     private fun setMarker(data: UiRestaurantData) {
+        if (data.isClustered)
+            return
         val marker = Marker()
 
         marker.position = LatLng(data.latitude, data.longitude)
-
-//        Log.d("marker test--", "${viewModel.uiState.value.curFilter}..${NEAR_RESTAURANT}.. ")
 
         marker.icon = if (viewModel.uiState.value.curFilter == NEAR_RESTAURANT)
             OverlayImage.fromResource(R.drawable.ic_marker_near)
@@ -244,6 +255,20 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
         markerList.add(marker)
     }
 
+    private fun setCluster(cluster: Cluster) {
+        val marker = Marker()
+
+        marker.position = LatLng(cluster.centerLatitude, cluster.centerLongitude)
+        marker.icon = OverlayImage.fromResource(R.drawable.ic_marker)
+        marker.map = naverMap
+
+        marker.setOnClickListener {
+            viewModel.onClusterClick(cluster)
+            true
+        }
+        markerList.add(marker)
+    }
+
     private fun setSingleMarker(marker: Marker?, item: UiRestaurantData) {
 
         marker?.setOnClickListener {
@@ -261,13 +286,20 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(R.layout.fragment_home), 
 
     }
 
-
-    // todo 모든 marker 데이터 markerList 에 저장해 놨다가, remove 다음 방식으로 진행
     private fun removeAllMarker() {
         markerList.forEach {
             it.map = null
         }
         markerList.clear()
+    }
+
+    private fun removeMarker(marker: Marker) {
+        markerList.remove(marker)
+        marker.map = null
+    }
+
+    fun addMarker(marker: Marker) {
+        markerList.add(marker)
     }
 
     private fun finishApp() {

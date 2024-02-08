@@ -1,6 +1,7 @@
-package com.avengers.nibobnebob.presentation.ui.main.home
+package com.avengers.presentation.ui.main.home
 
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.avengers.nibobnebob.domain.model.base.BaseState
@@ -16,6 +17,7 @@ import com.avengers.nibobnebob.presentation.ui.main.home.model.UiRestaurantData
 import com.avengers.nibobnebob.presentation.util.Constants.ERROR_MSG
 import com.avengers.nibobnebob.presentation.util.Constants.MY_LIST
 import com.avengers.nibobnebob.presentation.util.Constants.NEAR_RESTAURANT
+import com.avengers.presentation.util.DistanceUtil.haversineDistance
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.map.overlay.Marker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,17 +35,14 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.lang.Math.pow
 import javax.inject.Inject
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
+import kotlin.math.pow
 
 data class HomeUiState(
     val locationTrackingState: TrackingState = TrackingState.TryOn,
     val filterList: List<UiFilterData> = emptyList(),
     val markerList: List<UiRestaurantData> = emptyList(),
+    val clusterList: List<Cluster> = emptyList(),
     val recommendList: List<UiRecommendRestaurantData> = emptyList(),
     val curFilter: String = MY_LIST,
     val cameraLatitude: Double = 37.553836,
@@ -54,6 +53,13 @@ data class HomeUiState(
     val curLongitude: Double = 0.0,
     val curSelectedMarker: Marker? = null,
     val addRestaurantId: Int = 0
+)
+
+data class Cluster(
+    val centerLatitude: Double,
+    val centerLongitude: Double,
+    val markers: MutableList<UiRestaurantData>,
+    val clusterId: MutableList<Int>
 )
 
 sealed class TrackingState {
@@ -87,7 +93,8 @@ class HomeViewModel @Inject constructor(
     private val restaurantRepository: RestaurantRepository,
     private val myRestaurantListUseCase: GetMyRestaurantListUseCase,
     private val addWishRestaurantUseCase: AddWishRestaurantUseCase,
-    private val deleteMyWishRestaurantUseCase: DeleteMyWishRestaurantUseCase
+    private val deleteMyWishRestaurantUseCase: DeleteMyWishRestaurantUseCase,
+    private val clusterManager: ClusterManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -112,10 +119,45 @@ class HomeViewModel @Inject constructor(
     fun updateCamera(latitude: Double, longitude: Double, zoom: Double) {
         _uiState.update { state ->
             state.copy(
-                cameraRadius = pow(2.0, 14.0 - uiState.value.cameraZoom) * 1000,
+                cameraRadius = 2.00.pow(14.00 - uiState.value.cameraZoom) * 1000,
                 cameraLatitude = latitude,
                 cameraLongitude = longitude,
                 cameraZoom = zoom
+            )
+        }
+        clusterManager.updateCluster(
+            uiState.value.markerList,
+            latitude,
+            longitude,
+            uiState.value.cameraRadius
+        )
+        updateCluster()
+    }
+
+    private fun updateCluster() {
+        val clusterList = clusterManager.getClusterList()
+
+        val updatedMarkerList = _uiState.value.markerList.map { marker ->
+            val isClustered = clusterList.any { cluster ->
+                cluster.markers.any { it.id == marker.id }
+            }
+            marker.copy(isClustered = isClustered)
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                clusterList = clusterList,
+                markerList = updatedMarkerList
+            )
+        }
+    }
+
+    fun onClusterClick(cluster: Cluster) {
+        Log.d("클러스터 클릭", "클러스터 클릭")
+        val markersToShow = cluster.markers
+        _uiState.update { state ->
+            state.copy(
+                markerList = uiState.value.markerList + markersToShow
             )
         }
     }
@@ -225,8 +267,7 @@ class HomeViewModel @Inject constructor(
             radius = uiState.value.cameraRadius.toString(),
             longitude = uiState.value.cameraLongitude.toString(),
             latitude = uiState.value.cameraLatitude.toString(),
-            limit = if(uiState.value.cameraRadius < 500) 100 else 40
-        //이게 null일때 갯수제한이여야하는데.. 반대로 되어있어 200개 임시로 적음
+            limit = if (uiState.value.cameraRadius < 500) 200 else 40
         ).onStart {
             _events.emit(HomeEvents.ShowLoading)
         }.onEach {
@@ -242,13 +283,13 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                     moveCamera()
+                    _events.emit(HomeEvents.SetNewMarkers)
                 }
 
                 is BaseState.Error -> {
                     _events.emit(HomeEvents.ShowSnackMessage(ERROR_MSG))
                 }
             }
-            _events.emit(HomeEvents.SetNewMarkers)
         }.onCompletion {
             _events.emit(HomeEvents.DismissLoading)
         }.launchIn(viewModelScope)
@@ -277,11 +318,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                     moveCamera()
+                    _events.emit(HomeEvents.SetNewMarkers)
                 }
 
                 is BaseState.Error -> _events.emit(HomeEvents.ShowSnackMessage(ERROR_MSG))
             }
-            _events.emit(HomeEvents.SetNewMarkers)
         }.onCompletion {
             _events.emit(HomeEvents.DismissLoading)
         }.launchIn(viewModelScope)
@@ -306,11 +347,11 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                     moveCamera()
+                    _events.emit(HomeEvents.SetNewMarkers)
                 }
 
                 is BaseState.Error -> _events.emit(HomeEvents.ShowSnackMessage(ERROR_MSG))
             }
-            _events.emit(HomeEvents.SetNewMarkers)
         }.onCompletion {
             _events.emit(HomeEvents.DismissLoading)
         }.launchIn(viewModelScope)
@@ -386,18 +427,6 @@ class HomeViewModel @Inject constructor(
         return density
     }
 
-    private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val radius = 6371000 // 지구 반지름(미터 단위)
-        val distanceLatitude = Math.toRadians(lat2 - lat1)
-        val distanceLongitude = Math.toRadians(lon2 - lon1)
-
-        val a = (sin(distanceLatitude / 2) * sin(distanceLatitude / 2)) +
-                (cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                        sin(distanceLongitude / 2) * sin(distanceLongitude / 2))
-
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return radius * c
-    }
 
     private fun moveCamera() {
         if (_uiState.value.markerList.isEmpty()) return
@@ -413,7 +442,7 @@ class HomeViewModel @Inject constructor(
             }
             return
         }
-
+        updateCluster()
         var closestPoint: LatLng? = null
         var maxDensityPoint: LatLng? = null
         var minDistance = Double.MAX_VALUE
