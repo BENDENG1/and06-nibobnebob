@@ -7,7 +7,7 @@
 
         <variable
             name="vm"
-            type="com.avengers.nibobnebob.presentation.ui.main.home.HomeViewModel" />
+            type="com.avengers.presentation.ui.main.home.HomeViewModel" />
 
         <variable
             name="constants"
